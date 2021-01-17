@@ -22,10 +22,12 @@ def getFrame(sec):
     if hasFrames:
         cv2.imwrite(os.path.join(directory, "frame"+str(count)+".jpg"), frame)     # save frame as JPG file
     return hasFrames
+
 sec = 0
 frameRate = 0.5 # capture image in each 0.5 second
 count=1
 success = getFrame(sec)
+
 while success:
     count = count + 1
     sec = sec + frameRate
@@ -42,17 +44,20 @@ hog = cv2.HOGDescriptor()
 hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
 #imagePath = "store3.jpg"
 
-pointsofinterest = []
+pointsofintereststart = []
+pointsofinterestend = []
 
 
-imagePath = "pedestrians.jpg"
+imagePath = "splitvid\\frame1.jpg"
 image = cv2.imread(imagePath)
 image = imutils.resize(image, width=min(400, image.shape[1]))
 
 def onMouse(event, x, y, flags, param):
-    global pointsofinterest
-    if event == cv2.EVENT_LBUTTONUP:
-        pointsofinterest.append((x, y))
+    global pointsofintereststart, pointsofinterestend
+    if event == cv2.EVENT_LBUTTONDOWN:
+        pointsofintereststart.append((x, y))
+    elif event == cv2.EVENT_LBUTTONUP:
+        pointsofinterestend.append((x, y))
 
 img = np.zeros((512,512,3), np.uint8)
 cv2.namedWindow('Choose Points')
@@ -62,50 +67,67 @@ while True:
     cv2.imshow("Choose Points", image)
     if cv2.waitKey(1) & 0xFF == ord("q"):
         break
-        print("broke")
 
 cv2.destroyAllWindows()
 
-print(pointsofinterest)
+print("pointsofintereststart: ", pointsofintereststart, "pointsofinterestend: ", pointsofinterestend)
 
-#def findclosepeople(numofpeople):
-#    for i in range(0, numofpeople):
-#        if 
+peoplecoords = []
+
+color = (0, 0, 0)
 
 for imagePath in paths.list_images(directory):
     # load the image and resize it to (1) reduce detection time
     # and (2) improve detection accuracy
-    image = cv2.imread(imagePath)
-    image = imutils.resize(image, width=min(400, image.shape[1]))
-    orig = image.copy()
+    beforeimage = cv2.imread(imagePath)
+    beforeimage = imutils.resize(image, width=min(400, image.shape[1]))
+    
+    print("got into for imagepath")
+    for i in range(0, len(pointsofintereststart)):
+        print("got into poi for loop")
+        image = beforeimage[pointsofintereststart[i][1]:pointsofinterestend[i][1], pointsofintereststart[i][0]:pointsofinterestend[i][0]].copy()
+        #print("1", pointsofintereststart[i][1], "2", pointsofinterestend[i][1], "3", pointsofintereststart[i][0], "4", pointsofinterestend[i][0])
+        orig = image.copy()
+        #cv2.imshow("After NMS", image)  
+        #cv2.waitKey(0)
 
-    # detect people in the image
-    (rects, weights) = hog.detectMultiScale(image, winStride=(4, 4),
-        padding=(8, 8), scale=.8) #og: 1.05
+        print("past orig")
+        # detect people in the image
+        (rects, weights) = hog.detectMultiScale(image, winStride=(4, 4),
+            padding=(8, 8), scale=.8) #og: 1.05
 
-    # draw the original bounding boxes
-    for (x, y, w, h) in rects:
-        cv2.rectangle(orig, (x, y), (x + w, y + h), (0, 0, 255), 2)
-        avgcoordsx = x + w/2
-        avgcoordsy = y + h/2
-        print(avgcoordsx, avgcoordsy)
+        # draw the original bounding boxes
+        for (x, y, w, h) in rects:
+            cv2.rectangle(orig, (x, y), (x + w, y + h), (0, 0, 255), 2)
+            avgcoordsx = x + w/2
+            avgcoordsy = y + h/2
+            peoplecoords.append((avgcoordsx, avgcoordsy))
+            print("peoplecoords:", peoplecoords)
+        
+        
+        # apply non-maxima suppression to the bounding boxes using a
+        # fairly large overlap threshold to try to maintain overlapping
+        # boxes that are still people
+        rects = np.array([[x, y, x + w, y + h] for (x, y, w, h) in rects])
+        pick = non_max_suppression(rects, probs=None, overlapThresh=.65) #og: .65
+
+        # draw the final bounding boxes
+        for (xA, yA, xB, yB) in pick:
+            cv2.rectangle(image, (xA, yA), (xB, yB), (0, 255, 0), 2)
 
 
-    # apply non-maxima suppression to the bounding boxes using a
-    # fairly large overlap threshold to try to maintain overlapping
-    # boxes that are still people
-    rects = np.array([[x, y, x + w, y + h] for (x, y, w, h) in rects])
-    pick = non_max_suppression(rects, probs=None, overlapThresh=.65) #og: .65
+        # show some information on the number of bounding boxes
+        filename = imagePath[imagePath.rfind("/") + 1:]
+        print("[INFO] {}: {} original boxes, {} after suppression".format(filename, len(rects), len(pick)))
+        
+        print("right before cv2.imshow")
+        cv2.imshow("After NMS", image)  
+        cv2.waitKey(0)
 
-    # draw the final bounding boxes
-    for (xA, yA, xB, yB) in pick:
-        cv2.rectangle(image, (xA, yA), (xB, yB), (0, 255, 0), 2)
+        peoplecoords.clear() 
 
 
-    # show some information on the number of bounding boxes
-    filename = imagePath[imagePath.rfind("/") + 1:]
-    print("[INFO] {}: {} original boxes, {} after suppression".format(filename, len(rects), len(pick)))
-
-    #cv2.imshow("Before NMS", orig)      
-    cv2.imshow("After NMS", image)  
-    cv2.waitKey(0) 
+#for i in range(0, len(pointsofinterestend)):
+#        image = cv2.rectangle(image, pointsofintereststart[i], pointsofinterestend[i], color, 3)
+        #for j in range(0, len(peoplecoords)):
+            #if pointsofinterestend[i][0] < peoplecoords[j][0] and pointsofintereststart[i][0] > peoplecoords[j][0] and pointsofinterestend[i][1] < peoplecoords[j][1] and pointsofintereststart[i][1] < peoplecoords[j][1]:
