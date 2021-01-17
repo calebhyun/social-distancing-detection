@@ -18,6 +18,7 @@ print("successfully imported")
 hog = cv2.HOGDescriptor()
 hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
 imagePath = "store3.jpg"
+
 # load the image and resize it to (1) reduce detection time
 # and (2) improve detection accuracy
 image = cv2.imread(imagePath)
